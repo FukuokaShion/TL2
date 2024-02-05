@@ -1,32 +1,37 @@
-ï»¿#include <cstdio>
+#include <cstdio>
 #include <cstdlib>
-#include <cassert>
-#include <comdef.h>
-#include <d3d12.h>
 #include "TextureConverter.h"
 
 enum Argument {
-	kApplicationPath,	//ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã®ãƒ‘ã‚¹
-	kFilePath,			//æ¸¡ã•ã‚ŒãŸãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒ‘ã‚¹
-
+	kApplicationPath,	//ƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ÌƒpƒX
+	kFilePath,			//“n‚³‚ê‚½ƒtƒ@ƒCƒ‹‚ÌƒpƒX
 	NumArgument
 };
 
-int main(int argc, char* argv[]) {
-	assert(argc >= NumArgument);
-
-	//ãƒ©ã‚¤ãƒ–ãƒ©ãƒªã®åˆæœŸåŒ–
+int main(int argc,char* argv[]) {
+	//ƒRƒ}ƒ“ƒhƒ‰ƒCƒ“ˆø”w’è–³‚µ
+	if (argc < NumArgument) {
+		//g‚¢•û‚ğ•\¦‚·‚é
+		TextureConverter::OutputUsage();
+		return 0;
+	}
+	
+	//ƒ‰ƒCƒuƒ‰ƒŠ‚Ì‰Šú‰»
 	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 	assert(SUCCEEDED(hr));
 
-	//ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚³ãƒ³ãƒãƒ¼ã‚¿
+	//ƒeƒNƒXƒ`ƒƒƒRƒ“ƒo[ƒ^
 	TextureConverter converter;
+
+	//ƒIƒvƒVƒ‡ƒ“‚Ì”
+	int numOption = argc - NumArgument;
+	//ƒIƒvƒVƒ‡ƒ“”z—ñ(ƒ_ƒuƒ‹ƒ|ƒCƒ“ƒ^)
+	char** options = argv + NumArgument;
 
 	converter.ConverterTextureWICToDDS(argv[kFilePath]);
 
-	//COMãƒ©ã‚¤ãƒ–ãƒ©ãƒªã®çµ‚äº†
+	//COMƒ‰ƒCƒuƒ‰ƒŠ‚ÌI—¹
 	CoUninitialize();
 
-	//system("pause");
 	return 0;
 }

@@ -219,9 +219,6 @@ bool DirectX::IsSupportedTexture(
     if (!IsValid(fmt))
         return false;
 
-    const size_t iWidth = metadata.width;
-    const size_t iHeight = metadata.height;
-
     switch (fmt)
     {
     case DXGI_FORMAT_BC4_TYPELESS:
@@ -244,49 +241,6 @@ bool DirectX::IsSupportedTexture(
             return false;
         break;
 
-    case DXGI_FORMAT_NV12:
-    case DXGI_FORMAT_P010:
-    case DXGI_FORMAT_P016:
-    case DXGI_FORMAT_420_OPAQUE:
-        if ((metadata.dimension != TEX_DIMENSION_TEXTURE2D)
-            || (iWidth % 2) != 0 || (iHeight % 2) != 0)
-        {
-            return false;
-        }
-        break;
-
-    case DXGI_FORMAT_YUY2:
-    case DXGI_FORMAT_Y210:
-    case DXGI_FORMAT_Y216:
-    case WIN10_DXGI_FORMAT_P208:
-        if ((iWidth % 2) != 0)
-        {
-            return false;
-        }
-        break;
-
-    case DXGI_FORMAT_NV11:
-        if ((iWidth % 4) != 0)
-        {
-            return false;
-        }
-        break;
-
-    case DXGI_FORMAT_AI44:
-    case DXGI_FORMAT_IA44:
-    case DXGI_FORMAT_P8:
-    case DXGI_FORMAT_A8P8:
-        // Legacy video stream formats are not supported by Direct3D.
-        return false;
-
-    case WIN10_DXGI_FORMAT_V208:
-        if ((metadata.dimension != TEX_DIMENSION_TEXTURE2D)
-            || (iHeight % 2) != 0)
-        {
-            return false;
-        }
-        break;
-
     default:
         break;
     }
@@ -297,6 +251,8 @@ bool DirectX::IsSupportedTexture(
 
     // Validate array size, dimension, and width/height
     const size_t arraySize = metadata.arraySize;
+    const size_t iWidth = metadata.width;
+    const size_t iHeight = metadata.height;
     const size_t iDepth = metadata.depth;
 
     // Most cases are known apriori based on feature level, but we use this for robustness to handle the few optional cases
@@ -455,7 +411,7 @@ HRESULT DirectX::CreateTexture(
 {
     return CreateTextureEx(
         pDevice, srcImages, nimages, metadata,
-        D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0, CREATETEX_DEFAULT,
+        D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0, false,
         ppResource);
 }
 
@@ -469,7 +425,7 @@ HRESULT DirectX::CreateTextureEx(
     unsigned int bindFlags,
     unsigned int cpuAccessFlags,
     unsigned int miscFlags,
-    CREATETEX_FLAGS flags,
+    bool forceSRGB,
     ID3D11Resource** ppResource) noexcept
 {
     if (!pDevice || !srcImages || !nimages || !ppResource)
@@ -587,15 +543,7 @@ HRESULT DirectX::CreateTextureEx(
     // Create texture using static initialization data
     HRESULT hr = E_UNEXPECTED;
 
-    DXGI_FORMAT format = metadata.format;
-    if (flags & CREATETEX_FORCE_SRGB)
-    {
-        format = MakeSRGB(format);
-    }
-    else if (flags & CREATETEX_IGNORE_SRGB)
-    {
-        format = MakeLinear(format);
-    }
+    const DXGI_FORMAT tformat = (forceSRGB) ? MakeSRGB(metadata.format) : metadata.format;
 
     switch (metadata.dimension)
     {
@@ -605,7 +553,7 @@ HRESULT DirectX::CreateTextureEx(
             desc.Width = static_cast<UINT>(metadata.width);
             desc.MipLevels = static_cast<UINT>(metadata.mipLevels);
             desc.ArraySize = static_cast<UINT>(metadata.arraySize);
-            desc.Format = format;
+            desc.Format = tformat;
             desc.Usage = usage;
             desc.BindFlags = bindFlags;
             desc.CPUAccessFlags = cpuAccessFlags;
@@ -622,7 +570,7 @@ HRESULT DirectX::CreateTextureEx(
             desc.Height = static_cast<UINT>(metadata.height);
             desc.MipLevels = static_cast<UINT>(metadata.mipLevels);
             desc.ArraySize = static_cast<UINT>(metadata.arraySize);
-            desc.Format = format;
+            desc.Format = tformat;
             desc.SampleDesc.Count = 1;
             desc.SampleDesc.Quality = 0;
             desc.Usage = usage;
@@ -644,7 +592,7 @@ HRESULT DirectX::CreateTextureEx(
             desc.Height = static_cast<UINT>(metadata.height);
             desc.Depth = static_cast<UINT>(metadata.depth);
             desc.MipLevels = static_cast<UINT>(metadata.mipLevels);
-            desc.Format = format;
+            desc.Format = tformat;
             desc.Usage = usage;
             desc.BindFlags = bindFlags;
             desc.CPUAccessFlags = cpuAccessFlags;
@@ -672,7 +620,7 @@ HRESULT DirectX::CreateShaderResourceView(
 {
     return CreateShaderResourceViewEx(
         pDevice, srcImages, nimages, metadata,
-        D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0, CREATETEX_DEFAULT,
+        D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0, false,
         ppSRV);
 }
 
@@ -686,7 +634,7 @@ HRESULT DirectX::CreateShaderResourceViewEx(
     unsigned int bindFlags,
     unsigned int cpuAccessFlags,
     unsigned int miscFlags,
-    CREATETEX_FLAGS flags,
+    bool forceSRGB,
     ID3D11ShaderResourceView** ppSRV) noexcept
 {
     if (!ppSRV)
@@ -699,7 +647,7 @@ HRESULT DirectX::CreateShaderResourceViewEx(
 
     ComPtr<ID3D11Resource> resource;
     HRESULT hr = CreateTextureEx(pDevice, srcImages, nimages, metadata,
-        usage, bindFlags, cpuAccessFlags, miscFlags, flags,
+        usage, bindFlags, cpuAccessFlags, miscFlags, forceSRGB,
         resource.GetAddressOf());
     if (FAILED(hr))
         return hr;
@@ -707,18 +655,10 @@ HRESULT DirectX::CreateShaderResourceViewEx(
     assert(resource);
 
     D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
-    if (flags & CREATETEX_FORCE_SRGB)
-    {
+    if (forceSRGB)
         SRVDesc.Format = MakeSRGB(metadata.format);
-    }
-    else if (flags & CREATETEX_IGNORE_SRGB)
-    {
-        SRVDesc.Format = MakeLinear(metadata.format);
-    }
     else
-    {
         SRVDesc.Format = metadata.format;
-    }
 
     switch (metadata.dimension)
     {
